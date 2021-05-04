@@ -332,6 +332,10 @@ impl Status {
                     return Some(Status::from_h2_error(h2));
                 }
 
+                if let Some(transport) = err.downcast_ref::<crate::transport::Error>() {
+                    return Some(Status::unavailable(transport.to_string()));
+                }
+
                 if let Some(timeout) = err.downcast_ref::<crate::transport::TimeoutExpired>() {
                     return Some(Status::cancelled(timeout.to_string()));
                 }
@@ -817,6 +821,25 @@ mod tests {
         let err = orig.to_h2_error();
 
         assert_eq!(err.reason(), Some(h2::Reason::CANCEL));
+    }
+
+    #[test]
+    #[cfg(feature = "transport")]
+    fn from_error_transport() {
+        #[derive(Debug)]
+        struct TestErr {}
+        impl fmt::Display for TestErr {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "hello, it's me")
+            }
+        }
+        impl std::error::Error for TestErr {}
+
+        let orig = crate::transport::Error::from_source(TestErr {});
+        let found = Status::from_error(&orig);
+
+        assert_eq!(found.code(), Code::Unavailable);
+        assert_eq!(found.message(), "hello, it's me");
     }
 
     #[test]
